@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 
 
@@ -72,8 +72,18 @@ def reduce(map_dict):
             'count_403': count_403,
             'is_sus': is_sus
         }
+    
+    # TIME WINDOW ANALYSIS
+    # time_window_dict[start_hour, end_hour] : total_req
+    # to see if already in, check if hour extracted from datetime, n+1 is in dict
+    time_window_dict = {datetime(2000, 1, 1, hour).strftime('%I:00 %p'): 0 for hour in range(24)}
+    for entry in map_dict:
 
-    return [ip_analysis_dict, {}, {}]
+        #if time entry does not exist
+        key = entry[1].strftime('%I:00 %p')
+        time_window_dict[key] += 1
+    
+    return [ip_analysis_dict, time_window_dict, {}]
 
 
 def driver():
@@ -105,7 +115,20 @@ def driver():
             ip_str += " [SUSPICIOUS]"
 
         print(ip_str)
+    hours_dict = { "12:00 AM": "01:00 AM", "01:00 AM": "02:00 AM", "02:00 AM": "03:00 AM", "03:00 AM": "04:00 AM", "04:00 AM": "05:00 AM", "05:00 AM": "06:00 AM", "06:00 AM": "07:00 AM", "07:00 AM": "08:00 AM", "08:00 AM": "09:00 AM", "09:00 AM": "10:00 AM", "10:00 AM": "11:00 AM", "11:00 AM": "12:00 PM", "12:00 PM": "01:00 PM", "01:00 PM": "02:00 PM", "02:00 PM": "03:00 PM", "03:00 PM": "04:00 PM", "04:00 PM": "05:00 PM", "05:00 PM": "06:00 PM", "06:00 PM": "07:00 PM", "07:00 PM": "08:00 PM", "08:00 PM": "09:00 PM", "09:00 PM": "10:00 PM", "10:00 PM": "11:00 PM", "11:00 PM": "12:00 AM" }
+    peak = 0
+    peak_time = ""
+    for reduced_time in reduced_times:
+        if reduced_times[reduced_time] > peak:
+            peak = reduced_times[reduced_time]
+            peak_time = reduced_time
 
+    print("--- Hourly Analysis ---")
+    for reduced_time in reduced_times:
+        time_str = f"{reduced_time}-{hours_dict[reduced_time]}: {reduced_times[reduced_time]}"
+        if reduced_time == peak_time:
+            time_str += " (peak)"
+        print(time_str)
 
 if __name__ == "__main__":
     driver()
