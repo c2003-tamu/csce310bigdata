@@ -1,5 +1,10 @@
 from datetime import datetime
 
+def map(lines):
+    dict_overall = {}
+    for i in range(len(lines)):
+        dict_overall[lines[i][0],lines[i][1],lines[i][4]] = lines[i]
+    return dict_overall
 
 def parse(log_line):
     log_arr = log_line.split(' ')
@@ -19,8 +24,10 @@ def driver():
     for line in log_lines:
         parsed_lines.append(parse(line))
 
-    print(parsed_lines)
-
+    map_dict = map(parsed_lines)
+    for i in map_dict:
+        print(i)
+        print(map_dict[i])
 
 if __name__ == "__main__":
     driver()
