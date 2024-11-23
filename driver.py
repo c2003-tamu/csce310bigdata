@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 
 
 def map(lines):
@@ -18,7 +19,6 @@ def parse(log_line):
 
 def reduce(map_dict):
     sus_list = ["/admin", "/config"]
-    return_list = []
 
     # IP ANALYSIS
     ip_analysis_dict = {}
@@ -55,12 +55,15 @@ def reduce(map_dict):
         if (ip_entry[2] == '403'):
             count_403 += 1
 
+        # Is suspicious if attempting to access /admin or /config
         is_sus = ip_analysis_dict[ip_entry[0]]['is_sus']
         is_sus = (map_dict[ip_entry][-3] in sus_list) or is_sus
-
-        if ((map_dict[ip_entry][-3] in sus_list)):
-            print(f"\t{map_dict[ip_entry][-3]} is {(map_dict[ip_entry]
-                  [-3] in sus_list)} makes {ip_entry[0]} sus")
+        # Request is suspicious if the number of 401s are greater than 10
+        if (ip_analysis_dict[ip_entry[0]]['count_401'] > 10):
+            is_sus = True
+        # Request is suspicious if the number of 403s are greater than 10
+        if (ip_analysis_dict[ip_entry[0]]['count_403'] > 10):
+            is_sus = True
 
         ip_analysis_dict[ip_entry[0]] = {
             'num_instances': num_instances,
@@ -70,7 +73,7 @@ def reduce(map_dict):
             'is_sus': is_sus
         }
 
-    return [ip_analysis_dict, False]
+    return [ip_analysis_dict, {}, {}]
 
 
 def driver():
@@ -84,10 +87,24 @@ def driver():
         parsed_lines.append(parse(line))
 
     map_dict = map(parsed_lines)
-    return_list = reduce(map_dict)
+    reduced_ips = {}
+    reduced_times = {}
+    reduced_requests = {}
+    [reduced_ips, reduced_times, reduced_request] = reduce(map_dict)
 
-    for entry in return_list[0]:
-        print(f"{entry} : {return_list[0][entry]}\n")
+    # IP Analysis
+    print("--- IP Analysis ---")
+    for reduced_ip in reduced_ips:
+        percent_success = (
+            reduced_ips[reduced_ip]['num_success'] / reduced_ips[reduced_ip]['num_instances']) * 100
+        percent_success = math.floor(percent_success)
+
+        ip_str = f"{reduced_ip}: {reduced_ips[reduced_ip]['num_instances']} requests ({
+            percent_success}% success)"
+        if (reduced_ips[reduced_ip]['is_sus']):
+            ip_str += " [SUSPICIOUS]"
+
+        print(ip_str)
 
 
 if __name__ == "__main__":
