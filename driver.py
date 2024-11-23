@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 import math
 
 
@@ -10,17 +11,32 @@ def map(lines):
 
 
 def parse(log_line):
-    log_arr = log_line.split(' ')
-    log_arr[1] = datetime.strptime(
-        log_arr[1][1:-1], "%Y-%m-%dT%H:%M:%S")  # Configure datetime
-    log_arr[-1] = log_arr[-1].strip()  # Remove newline
-    return log_arr
+    pattern = r'^(\S+) \[(.*?)\] (\S+) (\S+) (\d{3}) (\d+)$'
+    match = re.match(pattern, log_line.strip())
+    if match:
+        try:
+            date = match.group(2)
+            modified_date = datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
+        except ValueError:
+            print("Value error")
+            return None
+
+        return [
+            match.group(1),
+            modified_date,  # Configure datetime
+            match.group(3),
+            match.group(4),
+            match.group(5),
+            match.group(6),
+        ]
+    else:
+        return None
 
 
 def reduce(map_dict):
     sus_list = ["/admin", "/config"]
 
-    # IP ANALYSIS
+    # IP ANALYSIS --------------------------------------------------
     ip_analysis_dict = {}
     for ip_entry in map_dict:
         # num_instances
@@ -72,18 +88,50 @@ def reduce(map_dict):
             'count_403': count_403,
             'is_sus': is_sus
         }
-    
-    # TIME WINDOW ANALYSIS
+
+    # TIME WINDOW ANALYSIS --------------------------------------------------
     # time_window_dict[start_hour, end_hour] : total_req
     # to see if already in, check if hour extracted from datetime, n+1 is in dict
-    time_window_dict = {datetime(2000, 1, 1, hour).strftime('%I:00 %p'): 0 for hour in range(24)}
+    time_window_dict = {datetime(2000, 1, 1, hour).strftime(
+        '%H:00'): 0 for hour in range(24)}
     for entry in map_dict:
 
-        #if time entry does not exist
-        key = entry[1].strftime('%I:00 %p')
+        # if time entry does not exist
+        key = entry[1].strftime('%H:00')
         time_window_dict[key] += 1
-    
-    return [ip_analysis_dict, time_window_dict, {}]
+
+    # ERROR PATTERN ANALYTICS --------------------------------------------------
+    error_analysis_dict = {}
+    for error_type in map_dict:
+        # Skip 2xx's
+        if error_type[2][0] == '2':
+            continue
+
+        # Doesn't exist
+        if error_analysis_dict.get(error_type[2]) is None:
+            error_analysis_dict[error_type[2]] = {
+                "num_instances": 0,
+                "url_frequency": {}
+            }
+
+        num_instances = error_analysis_dict[error_type[2]]['num_instances']
+        num_instances += 1
+
+        # URL doesnt exist
+        frequency_dict = error_analysis_dict[error_type[2]
+                                             ]['url_frequency']
+
+        if frequency_dict.get(map_dict[error_type][-3]) is None:
+            frequency_dict[map_dict[error_type][-3]] = 0
+
+        frequency_dict[map_dict[error_type][-3]] += 1
+
+        error_analysis_dict[error_type[2]] = {
+            'num_instances': num_instances,
+            'url_frequency': frequency_dict
+        }
+
+    return [ip_analysis_dict, time_window_dict, error_analysis_dict]
 
 
 def driver():
@@ -94,7 +142,9 @@ def driver():
     # Parse all lines and store it for mapping functions
     parsed_lines = []
     for line in log_lines:
-        parsed_lines.append(parse(line))
+        parsed_line = parse(line)
+        if parsed_line is not None:
+            parsed_lines.append(parsed_line)
 
     map_dict = map(parsed_lines)
     reduced_ips = {}
@@ -115,7 +165,34 @@ def driver():
             ip_str += " [SUSPICIOUS]"
 
         print(ip_str)
-    hours_dict = { "12:00 AM": "01:00 AM", "01:00 AM": "02:00 AM", "02:00 AM": "03:00 AM", "03:00 AM": "04:00 AM", "04:00 AM": "05:00 AM", "05:00 AM": "06:00 AM", "06:00 AM": "07:00 AM", "07:00 AM": "08:00 AM", "08:00 AM": "09:00 AM", "09:00 AM": "10:00 AM", "10:00 AM": "11:00 AM", "11:00 AM": "12:00 PM", "12:00 PM": "01:00 PM", "01:00 PM": "02:00 PM", "02:00 PM": "03:00 PM", "03:00 PM": "04:00 PM", "04:00 PM": "05:00 PM", "05:00 PM": "06:00 PM", "06:00 PM": "07:00 PM", "07:00 PM": "08:00 PM", "08:00 PM": "09:00 PM", "09:00 PM": "10:00 PM", "10:00 PM": "11:00 PM", "11:00 PM": "12:00 AM" }
+
+    # Time Window Analysis
+    hours_dict = {
+        "00:00": "01:00",
+        "01:00": "02:00",
+        "02:00": "03:00",
+        "03:00": "04:00",
+        "04:00": "05:00",
+        "05:00": "06:00",
+        "06:00": "07:00",
+        "07:00": "08:00",
+        "08:00": "09:00",
+        "09:00": "10:00",
+        "10:00": "11:00",
+        "11:00": "12:00",
+        "12:00": "13:00",
+        "13:00": "14:00",
+        "14:00": "15:00",
+        "15:00": "16:00",
+        "16:00": "17:00",
+        "17:00": "18:00",
+        "18:00": "19:00",
+        "19:00": "20:00",
+        "20:00": "21:00",
+        "21:00": "22:00",
+        "22:00": "23:00",
+        "23:00": "00:00",
+    }
     peak = 0
     peak_time = ""
     for reduced_time in reduced_times:
@@ -125,10 +202,25 @@ def driver():
 
     print("--- Hourly Analysis ---")
     for reduced_time in reduced_times:
-        time_str = f"{reduced_time}-{hours_dict[reduced_time]}: {reduced_times[reduced_time]}"
+        time_str = f"{
+            reduced_time}-{hours_dict[reduced_time]}: {reduced_times[reduced_time]} requests"
         if reduced_time == peak_time:
             time_str += " (peak)"
         print(time_str)
+
+    # Error Request Analysis
+    print("--- Error Analysis ---")
+    for error_request in reduced_request:
+        # Get the top url
+        top_url_dict = {"top_url": "", 'top_frequency': -1}
+        for url in reduced_request[error_request]['url_frequency']:
+            if reduced_request[error_request]['url_frequency'][url] > top_url_dict['top_frequency']:
+                top_url_dict["top_url"] = url
+                top_url_dict["top_frequency"] = reduced_request[error_request]['url_frequency'][url]
+
+        print(f"{error_request}: {
+              reduced_request[error_request]['num_instances']} occurrences (top URL: {top_url_dict["top_url"]})")
+
 
 if __name__ == "__main__":
     driver()
